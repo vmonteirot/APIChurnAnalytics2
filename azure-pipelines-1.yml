@@ -1,0 +1,90 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  azureSubscription: 'conexao'
+  webAppName: 'servicoapp-plusoft-final'
+  resourceGroup: 'rg-plusoft-final'
+
+stages:
+  - stage: Build
+    displayName: 'Build and Test Stage'
+    jobs:
+      - job: Build
+        displayName: 'Compilar, Testar e Publicar Artefatos'
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: '8.x' 
+
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'restore'
+              projects: '**/*.csproj'
+
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'build'
+              arguments: '--configuration $(buildConfiguration)'
+              projects: '**/*.csproj'
+
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'test'
+              arguments: '--configuration $(buildConfiguration) --no-build --logger trx'
+              projects: '**/*Tests/*.csproj'
+            
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFiles: '**/*.trx'
+              testRunTitle: 'Resultados dos Testes Unitários'
+              mergeTestResults: true
+
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'publish'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+              projects: '**/*.csproj'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'drop'
+              publishLocation: 'Container'
+
+  - stage: Deploy
+    displayName: 'Deploy Stage'
+    dependsOn: Build
+    jobs:
+      - deployment: DeployWebApp
+        displayName: 'Deploy para o App Service'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+
+                - task: AzureWebApp@1
+                  inputs:
+                    azureSubscription: '$(azureSubscription)'
+                    appName: '$(webAppName)'
+                    package: '$(Pipeline.Workspace)/drop/*'
+                    runtimeStack: 'DOTNETCORE|8.0'
+
+                - task: AzureCLI@2
+                  inputs:
+                    azureSubscription: '$(azureSubscription)'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az webapp update --resource-group $(resourceGroup) --name $(webAppName) --https-only true
+                      echo "Configuração HTTPS realizada com sucesso"
