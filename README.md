@@ -126,9 +126,4 @@ Para rodar os testes do projeto:
 No **Azure App Service**, configure a variável `ASPNETCORE_ENVIRONMENT` para `Production`. Adicione também outras variáveis de ambiente, como a string de conexão do banco de dados.
 """
 
-# Save the content as README.md
-readme_path = '/mnt/data/README.md'
-with open(readme_path, 'w') as readme_file:
-    readme_file.write(readme_content)
 
-readme_path
