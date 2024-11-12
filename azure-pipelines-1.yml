@@ -59,7 +59,7 @@ stages:
               artifactName: 'drop'
               publishLocation: 'Container'
 
-  ##- stage: Deploy
+  - stage: Deploy
     displayName: 'Deploy Stage'
     dependsOn: Build
     jobs:
