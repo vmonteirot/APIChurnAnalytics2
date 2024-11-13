@@ -9,8 +9,8 @@ pool:
 variables:
   buildConfiguration: 'Release'
   azureSubscription: 'conexao'
-  webAppName: 'servicoapp-plusoft-final'
-  resourceGroup: 'rg-plusoft-final'
+  webAppName: 'energykidss'
+  resourceGroup: 'rg-energykidss'
 
 stages:
   - stage: Build
