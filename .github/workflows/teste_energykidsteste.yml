@@ -1,57 +1,90 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+trigger:
+  branches:
+    include:
+      - main
 
-name: Build and deploy ASP.Net Core app to Azure Web App - energykidsteste
+pool:
+  vmImage: 'ubuntu-latest'
 
-on:
-  push:
-    branches:
-      - teste
-  workflow_dispatch:
+variables:
+  buildConfiguration: 'Release'
+  azureSubscription: 'conexao'
+  webAppName: 'energykidss'
+  resourceGroup: 'rg-energykidss'
 
-jobs:
-  build:
-    runs-on: windows-latest
+stages:
+  - stage: Build
+    displayName: 'Build and Test Stage'
+    jobs:
+      - job: Build
+        displayName: 'Compilar, Testar e Publicar Artefatos'
+        steps:
+          - task: UseDotNet@2
+            inputs:
+              packageType: 'sdk'
+              version: '8.x' 
 
-    steps:
-      - uses: actions/checkout@v4
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'restore'
+              projects: '**/*.csproj'
 
-      - name: Set up .NET Core
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: '8.x'
-          include-prerelease: true
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'build'
+              arguments: '--configuration $(buildConfiguration)'
+              projects: '**/*.csproj'
 
-      - name: Build with dotnet
-        run: dotnet build --configuration Release
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'test'
+              arguments: '--configuration $(buildConfiguration) --no-build --logger trx'
+              projects: '**/*Tests/*.csproj'
+            
+          - task: PublishTestResults@2
+            inputs:
+              testResultsFiles: '**/*.trx'
+              testRunTitle: 'Resultados dos Testes Unitários'
+              mergeTestResults: true
 
-      - name: dotnet publish
-        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+          - task: DotNetCoreCLI@2
+            inputs:
+              command: 'publish'
+              arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+              projects: '**/*.csproj'
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v3
-        with:
-          name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          - task: PublishBuildArtifacts@1
+            inputs:
+              pathToPublish: '$(Build.ArtifactStagingDirectory)'
+              artifactName: 'drop'
+              publishLocation: 'Container'
 
-  deploy:
-    runs-on: windows-latest
-    needs: build
-    environment:
-      name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+  - stage: Deploy
+    displayName: 'Deploy Stage'
+    dependsOn: Build
+    jobs:
+      - deployment: DeployWebApp
+        displayName: 'Deploy para o App Service'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
 
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v3
-        with:
-          name: .net-app
+                - task: AzureWebApp@1
+                  inputs:
+                    azureSubscription: '$(azureSubscription)'
+                    appName: '$(webAppName)'
+                    package: '$(Pipeline.Workspace)/drop/*'
+                    runtimeStack: 'DOTNETCORE|8.0'
 
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2
-        with:
-          app-name: 'energykidsteste'
-          slot-name: 'Production'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_2CD93DBD34A1407D9614AECEE687B801 }}
-          package: .
+                - task: AzureCLI@2
+                  inputs:
+                    azureSubscription: '$(azureSubscription)'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az webapp update --resource-group $(resourceGroup) --name $(webAppName) --https-only true
+                      echo "Configuração HTTPS realizada com sucesso"
